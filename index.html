@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Database App</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      display: flex; 
+      margin: 0; 
+      height: 100vh; 
+      overflow: hidden; 
+    }
+
+    /* Left Menu (Sidebar) */
+    #menu { 
+      width: 220px; 
+      background: #f4f4f4; 
+      padding: 10px; 
+      border-right: 1px solid #ccc; 
+      height: 100vh; 
+      position: fixed; 
+      left: 0; 
+      top: 0; 
+      overflow-y: auto; 
+    }
+    #menu h3 { margin-top: 0; }
+    #menu div { 
+      padding: 8px; 
+      cursor: pointer; 
+      border-radius: 4px; 
+      display: flex; 
+      align-items: center; 
+      gap: 6px; 
+      text-align: left;
+    }
+    #menu div:hover { background: #ddd; }
+
+    /* Right Content */
+    #content { 
+      flex: 1; 
+      padding: 20px; 
+      margin-left: 240px; /* Sidebar gap */
+      height: 100vh; 
+      overflow-y: auto; 
+      text-align: left; /* সব লেখা বাঁদিকে */
+    }
+
+    /* Database Item */
+    .db-item { 
+      padding: 6px; 
+      border: 1px solid #ddd; 
+      margin: 6px 0; 
+      border-radius: 4px; 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center;
+    }
+    .db-item:hover { background: #f0f0f0; }
+
+    .db-left { cursor: pointer; display: flex; align-items: center; gap: 6px; flex: 1; }
+    .db-menu { cursor: pointer; padding: 4px; margin-right: 8px; }
+
+    /* Popup Menu */
+    .menu-popup {
+      position: absolute; 
+      background: white; 
+      border: 1px solid #ccc; 
+      border-radius: 4px;
+      display: none; 
+      z-index: 1000; 
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      min-width: 150px;
+    }
+    .menu-popup div { padding: 6px 12px; cursor: pointer; text-align: left; }
+    .menu-popup div:hover { background: #eee; }
+
+    #errorBox { color: red; margin: 10px 0; display: none; }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <div id="menu">
+    <h3>Menu</h3>
+    <div onclick="goHome()">🏠 Home</div>
+    <div onclick="goBack()">⬅ Back</div>
+    <div onclick="openDatabases()">📂 Databases</div>
+    <div onclick="openForms()">📋 Forms</div>
+  </div>
+
+  <!-- Content -->
+  <div id="content">
+    <h2>Welcome</h2>
+    <p>Select an option from the menu.</p>
+  </div>
+
+  <!-- Popup Menu -->
+  <div id="popupMenu" class="menu-popup">
+    <div onclick="renameDatabase()">✏️ Rename</div>
+    <div onclick="deleteDatabase()">🗑 Delete</div>
+  </div>
+
+  <script>
+    let databases = JSON.parse(localStorage.getItem("databases") || "{}");
+    let currentPopupDB = null;
+    let historyStack = [];  
+
+    function saveDatabases() {
+      localStorage.setItem("databases", JSON.stringify(databases));
+    }
+
+    function setContent(html, saveHistory = true) {
+      const content = document.getElementById("content");
+      if (saveHistory) {
+        historyStack.push(content.innerHTML); 
+      }
+      content.innerHTML = html;
+    }
+
+    function openDatabases() {
+      setContent(`
+        <h2>Databases</h2>
+        <button onclick="showImportForm()">📥 Import Google Sheet</button>
+        <div id="errorBox"></div>
+        <div id="dbList">
+          ${Object.keys(databases).length ? 
+            Object.keys(databases).map(db => `
+              <div class="db-item">
+                <div class="db-menu" onclick="showMenu(event, '${db}')">⋮</div>
+                <div class="db-left" onclick="openDatabase('${db}')">📊 ${db}</div>
+              </div>
+            `).join("") 
+          : "<p>No databases yet.</p>"}
+        </div>
+      `);
+    }
+
+    function showImportForm() {
+      setContent(`
+        <h2>Import Google Sheet</h2>
+        <input type="text" id="sheetURL" placeholder="Paste Google Sheet CSV URL" style="width:80%">
+        <button onclick="importSheet()">Import</button>
+        <div id="errorBox"></div>
+      `);
+    }
+
+    async function importSheet() {
+      const url = document.getElementById("sheetURL").value.trim();
+      const err = document.getElementById("errorBox");
+      err.style.display = "none"; err.textContent = "";
+
+      if (!url) {
+        err.textContent = "⚠️ Please enter a Google Sheet CSV URL.";
+        err.style.display = "block"; return;
+      }
+
+      try {
+        const csvText = await fetchRawCSV(url);
+        const rows = parseCSV(csvText);
+        const headers = rows[0];
+
+        let dbName = "GoogleSheet_" + (Object.keys(databases).length + 1);
+        const match = url.match(/gid=([^&]+)/);
+        if (match) dbName = "Sheet_" + match[1];
+
+        databases[dbName] = headers;
+        saveDatabases();
+        openDatabases();
+      } catch (e) {
+        console.error(e);
+        err.textContent = "❌ Failed to fetch from Google Sheet! Make sure it's published as CSV.";
+        err.style.display = "block";
+      }
+    }
+
+    function openDatabase(dbName) {
+      const headers = databases[dbName];
+      setContent(`
+        <h2>${dbName}</h2>
+        <h3>Columns:</h3>
+        <ul>${headers.map(h => `<li>📌 ${h}</li>`).join("")}</ul>
+      `);
+    }
+
+    function parseCSV(text) {
+      return text.trim().split(/\r?\n/).map(r => r.split(","));
+    }
+
+    async function fetchRawCSV(url) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return await res.text();
+      } catch {
+        const proxy = "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
+        const res2 = await fetch(proxy);
+        if (!res2.ok) throw new Error("Proxy fail");
+        return await res2.text();
+      }
+    }
+
+    function openForms() {
+      setContent("<h2>Forms</h2><p>Forms functionality will go here.</p>");
+    }
+
+    function goHome() {
+      setContent(`
+        <h2>Welcome</h2>
+        <p>Select an option from the menu.</p>
+      `);
+    }
+
+    function goBack() {
+      if (historyStack.length > 0) {
+        const prev = historyStack.pop();
+        document.getElementById("content").innerHTML = prev;
+      }
+    }
+
+    function showMenu(e, dbName) {
+      e.stopPropagation();
+      currentPopupDB = dbName;
+      const menu = document.getElementById("popupMenu");
+      menu.style.display = "block";
+
+      const rect = e.target.getBoundingClientRect();
+      const menuWidth = 150;
+      const left = rect.left + window.scrollX - (menuWidth / 2) + rect.width / 2;
+      const top = rect.top + window.scrollY + rect.height + 5;
+
+      menu.style.left = left + "px";
+      menu.style.top = top + "px";
+    }
+
+    document.addEventListener("click", () => {
+      document.getElementById("popupMenu").style.display = "none";
+    });
+
+    function renameDatabase() {
+      const newName = prompt("Enter new name:", currentPopupDB);
+      if (newName && !databases[newName]) {
+        databases[newName] = databases[currentPopupDB];
+        delete databases[currentPopupDB];
+        saveDatabases();
+        openDatabases();
+      }
+      document.getElementById("popupMenu").style.display = "none";
+    }
+
+    function deleteDatabase() {
+      if (confirm("Delete database '" + currentPopupDB + "'?")) {
+        delete databases[currentPopupDB];
+        saveDatabases();
+        openDatabases();
+      }
+      document.getElementById("popupMenu").style.display = "none";
+    }
+  </script>
+
+</body>
+</html>
