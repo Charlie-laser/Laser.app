@@ -3,79 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <title>Database App</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
   <style>
-    body { 
-      font-family: Arial, sans-serif; 
-      display: flex; 
-      margin: 0; 
-      height: 100vh; 
-      overflow: hidden; 
-    }
-
-    /* Left Menu (Sidebar) */
-    #menu { 
-      width: 220px; 
-      background: #f4f4f4; 
-      padding: 10px; 
-      border-right: 1px solid #ccc; 
-      height: 100vh; 
-      position: fixed; 
-      left: 0; 
-      top: 0; 
-      overflow-y: auto; 
-    }
+    body { font-family: Arial, sans-serif; display: flex; margin: 0; height: 100vh; overflow: hidden; }
+    #menu { width: 220px; background: #f4f4f4; padding: 10px; border-right: 1px solid #ccc; height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; }
     #menu h3 { margin-top: 0; }
-    #menu div { 
-      padding: 8px; 
-      cursor: pointer; 
-      border-radius: 4px; 
-      display: flex; 
-      align-items: center; 
-      gap: 6px; 
-      text-align: left;
-    }
+    #menu div { padding: 8px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; gap: 6px; }
     #menu div:hover { background: #ddd; }
-
-    /* Right Content */
-    #content { 
-      flex: 1; 
-      padding: 20px; 
-      margin-left: 240px; /* Sidebar gap */
-      height: 100vh; 
-      overflow-y: auto; 
-      text-align: left; /* সব লেখা বাঁদিকে */
-    }
-
-    /* Database Item */
-    .db-item { 
-      padding: 6px; 
-      border: 1px solid #ddd; 
-      margin: 6px 0; 
-      border-radius: 4px; 
-      display: flex; 
-      justify-content: space-between; 
-      align-items: center;
-    }
+    #content { flex: 1; padding: 20px; margin-left: 240px; height: 100vh; overflow-y: auto; }
+    .db-item { padding: 6px; border: 1px solid #ddd; margin: 6px 0; border-radius: 4px; display: flex; align-items: center; justify-content: flex-start; gap: 10px; }
     .db-item:hover { background: #f0f0f0; }
-
-    .db-left { cursor: pointer; display: flex; align-items: center; gap: 6px; flex: 1; }
-    .db-menu { cursor: pointer; padding: 4px; margin-right: 8px; }
-
-    /* Popup Menu */
-    .menu-popup {
-      position: absolute; 
-      background: white; 
-      border: 1px solid #ccc; 
-      border-radius: 4px;
-      display: none; 
-      z-index: 1000; 
-      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-      min-width: 150px;
-    }
-    .menu-popup div { padding: 6px 12px; cursor: pointer; text-align: left; }
+    .db-left { cursor: pointer; flex: 1; }
+    .db-menu { cursor: pointer; padding: 4px; color: #888; }
+    .db-menu:hover { color: #000; }
+    .menu-popup { position: absolute; background: white; border: 1px solid #ccc; border-radius: 4px; display: none; z-index: 1000; box-shadow: 0 2px 6px rgba(0,0,0,0.2); min-width: 150px; }
+    .menu-popup div { padding: 6px 12px; cursor: pointer; }
     .menu-popup div:hover { background: #eee; }
-
     #errorBox { color: red; margin: 10px 0; display: none; }
+    .loading { color: blue; font-style: italic; margin: 10px 0; }
+    .success { color: green; margin: 10px 0; }
   </style>
 </head>
 <body>
@@ -112,17 +58,14 @@
 
     function setContent(html, saveHistory = true) {
       const content = document.getElementById("content");
-      if (saveHistory) {
-        historyStack.push(content.innerHTML); 
-      }
+      if (saveHistory) historyStack.push(content.innerHTML);
       content.innerHTML = html;
     }
 
     function openDatabases() {
       setContent(`
         <h2>Databases</h2>
-        <button onclick="showImportForm()">📥 Import Google Sheet</button>
-        <div id="errorBox"></div>
+        <button onclick="showImportForm()">➕ Add Database</button>
         <div id="dbList">
           ${Object.keys(databases).length ? 
             Object.keys(databases).map(db => `
@@ -138,105 +81,103 @@
 
     function showImportForm() {
       setContent(`
-        <h2>Import Google Sheet</h2>
+        <h2>Add Google Sheet Database</h2>
         <input type="text" id="sheetURL" placeholder="Paste Google Sheet CSV URL" style="width:80%">
-        <button onclick="importSheet()">Import</button>
+        <button onclick="importSheet()">Add</button>
+        <div id="statusBox"></div>
         <div id="errorBox"></div>
       `);
     }
 
     async function importSheet() {
       const url = document.getElementById("sheetURL").value.trim();
+      const statusBox = document.getElementById("statusBox");
       const err = document.getElementById("errorBox");
       err.style.display = "none"; err.textContent = "";
+      statusBox.innerHTML = "<p class='loading'>⏳ Loading data from Google Sheet...</p>";
 
-      if (!url) {
-        err.textContent = "⚠️ Please enter a Google Sheet CSV URL.";
-        err.style.display = "block"; return;
+      if (!url.includes("output=csv")) {
+        err.textContent = "⚠️ Please provide a valid Google Sheet CSV link.";
+        err.style.display = "block"; 
+        statusBox.innerHTML = "";
+        return;
       }
 
       try {
-        const csvText = await fetchRawCSV(url);
-        const rows = parseCSV(csvText);
-        const headers = rows[0];
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Network error");
 
-        let dbName = "GoogleSheet_" + (Object.keys(databases).length + 1);
-        const match = url.match(/gid=([^&]+)/);
-        if (match) dbName = "Sheet_" + match[1];
+        const csvText = await response.text();
 
-        databases[dbName] = headers;
-        saveDatabases();
-        openDatabases();
+        Papa.parse(csvText, {
+          header: true,
+          worker: true, // faster parsing
+          complete: function(results) {
+            if (!results.data || results.data.length === 0) throw new Error("Empty data");
+            const headers = Object.keys(results.data[0]);
+            let dbName = "Sheet_" + (Object.keys(databases).length + 1);
+            databases[dbName] = {
+              headers: headers.map(h => ({ name: h, type: "Text" })),
+              rows: results.data.map(row => headers.map(h => row[h]))
+            };
+            saveDatabases();
+            statusBox.innerHTML = "<p class='success'>✅ Database added successfully!</p>";
+            openDatabases();
+          },
+          error: function() {
+            throw new Error("Parse error");
+          }
+        });
+
       } catch (e) {
         console.error(e);
-        err.textContent = "❌ Failed to fetch from Google Sheet! Make sure it's published as CSV.";
+        err.textContent = "❌ Failed to fetch from Google Sheet!";
         err.style.display = "block";
+        statusBox.innerHTML = "";
       }
     }
 
-    function openDatabase(dbName) {
-      const headers = databases[dbName];
-      setContent(`
-        <h2>${dbName}</h2>
-        <h3>Columns:</h3>
-        <ul>${headers.map(h => `<li>📌 ${h}</li>`).join("")}</ul>
-      `);
+    function openDatabase(dbName, page = 1) {
+      const db = databases[dbName];
+      const rowsPerPage = 100;
+      const start = (page - 1) * rowsPerPage;
+      const end = start + rowsPerPage;
+      const totalPages = Math.ceil(db.rows.length / rowsPerPage);
+
+      let tableHTML = `
+        <table border="1" cellspacing="0" cellpadding="5" style="border-collapse:collapse; width:100%; text-align:left;">
+          <thead>
+            <tr>${db.headers.map(h => `<th>${h.name}</th>`).join("")}</tr>
+          </thead>
+          <tbody>
+            ${db.rows.slice(start, end).map(row => `
+              <tr>${row.map(cell => `<td>${cell}</td>`).join("")}</tr>
+            `).join("")}
+          </tbody>
+        </table>
+        <div style="margin-top:10px; text-align:center;">
+          <button onclick="openDatabase('${dbName}', ${page - 1})" ${page === 1 ? "disabled" : ""}>⬅ Prev</button>
+          <span> Page ${page} of ${totalPages} </span>
+          <button onclick="openDatabase('${dbName}', ${page + 1})" ${page === totalPages ? "disabled" : ""}>Next ➡</button>
+        </div>
+      `;
+      setContent(`<h2>${dbName}</h2>${tableHTML}`, false);
     }
 
-    function parseCSV(text) {
-      return text.trim().split(/\r?\n/).map(r => r.split(","));
-    }
-
-    async function fetchRawCSV(url) {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        return await res.text();
-      } catch {
-        const proxy = "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
-        const res2 = await fetch(proxy);
-        if (!res2.ok) throw new Error("Proxy fail");
-        return await res2.text();
-      }
-    }
-
-    function openForms() {
-      setContent("<h2>Forms</h2><p>Forms functionality will go here.</p>");
-    }
-
-    function goHome() {
-      setContent(`
-        <h2>Welcome</h2>
-        <p>Select an option from the menu.</p>
-      `);
-    }
-
-    function goBack() {
-      if (historyStack.length > 0) {
-        const prev = historyStack.pop();
-        document.getElementById("content").innerHTML = prev;
-      }
-    }
+    function goHome() { setContent("<h2>Welcome</h2><p>Select an option from the menu.</p>"); }
+    function goBack() { if (historyStack.length > 0) document.getElementById("content").innerHTML = historyStack.pop(); }
+    function openForms() { setContent("<h2>Forms</h2><p>Forms functionality will go here.</p>"); }
 
     function showMenu(e, dbName) {
       e.stopPropagation();
       currentPopupDB = dbName;
       const menu = document.getElementById("popupMenu");
       menu.style.display = "block";
-
       const rect = e.target.getBoundingClientRect();
-      const menuWidth = 150;
-      const left = rect.left + window.scrollX - (menuWidth / 2) + rect.width / 2;
-      const top = rect.top + window.scrollY + rect.height + 5;
-
-      menu.style.left = left + "px";
-      menu.style.top = top + "px";
+      menu.style.left = rect.left + "px";
+      menu.style.top = rect.bottom + "px";
     }
-
-    document.addEventListener("click", () => {
-      document.getElementById("popupMenu").style.display = "none";
-    });
-
+    document.addEventListener("click", () => { document.getElementById("popupMenu").style.display = "none"; });
     function renameDatabase() {
       const newName = prompt("Enter new name:", currentPopupDB);
       if (newName && !databases[newName]) {
@@ -247,7 +188,6 @@
       }
       document.getElementById("popupMenu").style.display = "none";
     }
-
     function deleteDatabase() {
       if (confirm("Delete database '" + currentPopupDB + "'?")) {
         delete databases[currentPopupDB];
@@ -257,6 +197,5 @@
       document.getElementById("popupMenu").style.display = "none";
     }
   </script>
-
 </body>
 </html>
