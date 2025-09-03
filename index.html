@@ -22,25 +22,13 @@
     #errorBox { color: red; margin: 10px 0; display: none; }
     .loading { color: blue; font-style: italic; margin: 10px 0; }
     .success { color: green; margin: 10px 0; }
-
-    /* Excel-like Table Styling */
     table { border-collapse: collapse; width: 100%; font-size: 14px; }
-    thead th { 
-      position: sticky; 
-      top: 0; 
-      background: #f0f0f0; 
-      border: 1px solid #ccc; 
-      padding: 6px; 
-      text-align: left;
-      z-index: 1;
-    }
+    thead th { position: sticky; top: 0; background: #f0f0f0; border: 1px solid #ccc; padding: 6px; text-align: left; z-index: 1; }
     tbody td { border: 1px solid #ddd; padding: 6px; }
     tbody tr:nth-child(even) { background: #fafafa; }
     tbody tr:hover { background: #f1f7ff; }
-
-    /* Progress Bar */
-    #progressContainer { width: 100%; background: #eee; height: 20px; border-radius: 5px; margin-top: 10px; }
-    #progressBar { height: 20px; width: 0%; background: #2196F3; color: white; text-align: center; font-size: 12px; border-radius: 5px; }
+    .progress-container { width: 100%; background: #eee; border-radius: 4px; margin-top: 10px; }
+    .progress-bar { height: 20px; width: 0%; background: #2196F3; text-align: center; color: white; border-radius: 4px; }
   </style>
 </head>
 <body>
@@ -104,12 +92,11 @@
         <input type="text" id="sheetURL" placeholder="Paste Google Sheet CSV URL" style="width:80%">
         <button onclick="importSheet()">Add</button>
         <div id="statusBox"></div>
+        <div class="progress-container"><div id="progressBar" class="progress-bar">0%</div></div>
         <div id="errorBox"></div>
-        <div id="progressContainer"><div id="progressBar">0%</div></div>
       `);
     }
 
-    // ✅ Fixed Import Function
     async function importSheet() {
       const url = document.getElementById("sheetURL").value.trim();
       const statusBox = document.getElementById("statusBox");
@@ -131,30 +118,24 @@
         if (!response.ok) throw new Error("Network error");
 
         const csvText = await response.text();
-        let allRows = [];
-        let headers = [];
-        const lines = csvText.split("\n").length; // মোট লাইন সংখ্যা
 
+        // 🚀 একবারে parse (super fast)
         Papa.parse(csvText, {
           header: true,
           skipEmptyLines: true,
-          worker: true,
-          step: function(row) {
-            if (headers.length === 0) headers = Object.keys(row.data);
-            allRows.push(Object.values(row.data));
+          complete: function(results) {
+            const headers = results.meta.fields || [];
+            const allRows = results.data.map(row => headers.map(h => row[h] || ""));
 
-            // update progress
-            const percent = Math.min(100, Math.round((allRows.length / lines) * 100));
-            progressBar.style.width = percent + "%";
-            progressBar.textContent = percent + "%";
-          },
-          complete: function() {
             if (allRows.length === 0) {
               err.textContent = "❌ No data found in the sheet!";
               err.style.display = "block";
               statusBox.innerHTML = "";
               return;
             }
+
+            progressBar.style.width = "100%";
+            progressBar.textContent = "100%";
 
             let dbName = "Sheet_" + (Object.keys(databases).length + 1);
             databases[dbName] = {
