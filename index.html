@@ -37,6 +37,10 @@
     tbody td { border: 1px solid #ddd; padding: 6px; }
     tbody tr:nth-child(even) { background: #fafafa; }
     tbody tr:hover { background: #f1f7ff; }
+
+    /* Progress bar */
+    .progress-container { width: 100%; background: #eee; border-radius: 4px; margin-top: 10px; }
+    .progress-bar { width: 0%; height: 20px; background: #2196f3; text-align: center; color: white; border-radius: 4px; transition: width 0.2s; }
   </style>
 </head>
 <body>
@@ -101,6 +105,7 @@
         <button onclick="importSheet()">Add</button>
         <div id="statusBox"></div>
         <div id="errorBox"></div>
+        <div class="progress-container"><div class="progress-bar" id="progressBar">0%</div></div>
       `);
     }
 
@@ -108,7 +113,9 @@
       const url = document.getElementById("sheetURL").value.trim();
       const statusBox = document.getElementById("statusBox");
       const err = document.getElementById("errorBox");
+      const progressBar = document.getElementById("progressBar");
       err.style.display = "none"; err.textContent = "";
+      progressBar.style.width = "0%"; progressBar.textContent = "0%";
       statusBox.innerHTML = "<p class='loading'>⏳ Loading data from Google Sheet...</p>";
 
       if (!url.includes("output=csv")) {
@@ -122,18 +129,28 @@
         const response = await fetch(url);
         if (!response.ok) throw new Error("Network error");
 
+        let allRows = [];
+        let headers = [];
         const csvText = await response.text();
+        const totalLines = csvText.split("\n").length;
 
         Papa.parse(csvText, {
           header: true,
-          worker: true, // faster parsing
-          complete: function(results) {
-            if (!results.data || results.data.length === 0) throw new Error("Empty data");
-            const headers = Object.keys(results.data[0]);
+          worker: true,
+          step: function(row) {
+            if (headers.length === 0) headers = Object.keys(row.data);
+            allRows.push(Object.values(row.data));
+
+            // update progress
+            const percent = Math.min(100, Math.round((allRows.length / totalLines) * 100));
+            progressBar.style.width = percent + "%";
+            progressBar.textContent = percent + "%";
+          },
+          complete: function() {
             let dbName = "Sheet_" + (Object.keys(databases).length + 1);
             databases[dbName] = {
               headers: headers.map(h => ({ name: h, type: "Text" })),
-              rows: results.data.map(row => headers.map(h => row[h]))
+              rows: allRows
             };
             saveDatabases();
             statusBox.innerHTML = "<p class='success'>✅ Database added successfully!</p>";
