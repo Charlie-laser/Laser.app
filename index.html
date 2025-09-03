@@ -33,15 +33,18 @@
   <script>
     let historyStack = [];
 
-    function setContent(html) {
-      // পুরনো কন্টেন্ট historyStack এ সেভ হচ্ছে
-      historyStack.push(document.getElementById("content").innerHTML);
-      document.getElementById("content").innerHTML = html;
+    function setContent(html, saveHistory = true) {
+      const content = document.getElementById("content");
+      if (saveHistory) {
+        historyStack.push(content.innerHTML); // শুধু তখন save হবে
+      }
+      content.innerHTML = html;
     }
 
     function goBack() {
       if (historyStack.length > 0) {
-        document.getElementById("content").innerHTML = historyStack.pop();
+        const prev = historyStack.pop();
+        setContent(prev, false); // back এ গেলে আর save হবে না
       } else {
         goHome();
       }
