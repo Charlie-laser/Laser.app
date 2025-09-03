@@ -22,22 +22,11 @@
     #errorBox { color: red; margin: 10px 0; display: none; }
     .loading { color: blue; font-style: italic; margin: 10px 0; }
     .success { color: green; margin: 10px 0; }
+    .progress-container { width: 100%; background: #eee; border-radius: 4px; margin: 10px 0; height: 20px; }
+    .progress-bar { height: 100%; background: green; width: 0%; text-align: center; color: white; font-size: 12px; border-radius: 4px; }
 
-    /* Progress bar */
-    .progress-container { width: 100%; background: #eee; margin-top: 10px; height: 20px; border-radius: 5px; overflow: hidden; }
-    .progress-bar { height: 100%; width: 0%; background: #2196F3; color: white; text-align: center; font-size: 12px; line-height: 20px; transition: width 0.2s; }
-
-    /* Excel-like Table Styling */
     table { border-collapse: collapse; width: 100%; font-size: 14px; }
-    thead th { 
-      position: sticky; 
-      top: 0; 
-      background: #f0f0f0; 
-      border: 1px solid #ccc; 
-      padding: 6px; 
-      text-align: left;
-      z-index: 1;
-    }
+    thead th { position: sticky; top: 0; background: #f0f0f0; border: 1px solid #ccc; padding: 6px; text-align: left; z-index: 1; }
     tbody td { border: 1px solid #ddd; padding: 6px; }
     tbody tr:nth-child(even) { background: #fafafa; }
     tbody tr:hover { background: #f1f7ff; }
@@ -101,67 +90,106 @@
     function showImportForm() {
       setContent(`
         <h2>Add Google Sheet Database</h2>
-        <input type="text" id="sheetURL" placeholder="Paste Google Sheet CSV URL" style="width:80%">
-        <button onclick="importSheet()">Add</button>
+        <input type="text" id="sheetURL" placeholder="Paste Google Sheet link" style="width:80%">
+        <button onclick="importSheet()">Detect Sheets</button>
         <div id="statusBox"></div>
         <div id="errorBox"></div>
-        <div class="progress-container"><div id="progressBar" class="progress-bar">0%</div></div>
+        <div class="progress-container"><div id="progressBar" class="progress-bar"></div></div>
       `);
     }
 
+    // Step 1: Detect sheets from Google Sheet
     async function importSheet() {
-      const url = document.getElementById("sheetURL").value.trim();
+      const urlInput = document.getElementById("sheetURL").value.trim();
       const statusBox = document.getElementById("statusBox");
       const err = document.getElementById("errorBox");
-      const progressBar = document.getElementById("progressBar");
       err.style.display = "none"; err.textContent = "";
-      statusBox.innerHTML = "<p class='loading'>⏳ Loading data from Google Sheet...</p>";
+      statusBox.innerHTML = "<p class='loading'>🔍 Detecting sheet tabs...</p>";
 
-      if (!url.includes("output=csv")) {
-        err.textContent = "⚠️ Please provide a valid Google Sheet CSV link.";
+      let match = urlInput.match(/\/d\/(.*?)\//);
+      if (!match) {
+        err.textContent = "⚠️ Invalid Google Sheet link!";
         err.style.display = "block"; 
         statusBox.innerHTML = "";
         return;
       }
-
-      let dbName = "Sheet_" + (Object.keys(databases).length + 1);
-      let loadedRows = 0;
+      let spreadsheetId = match[1];
 
       try {
-        Papa.parse(url, {
-          download: true,
-          header: true,
-          skipEmptyLines: true,
-          worker: true,
-          chunkSize: 5000, // প্রতি 5000 row এ ভাগ করে লোড করবে
-          chunk: function(results, parser) {
-            if (!databases[dbName]) {
-              databases[dbName] = { headers: results.meta.fields.map(h => ({ name: h, type: "Text" })), rows: [] };
-            }
-            databases[dbName].rows.push(...results.data.map(row => results.meta.fields.map(h => row[h] || "")));
+        const metaUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?`;
+        const response = await fetch(metaUrl);
+        const text = await response.text();
 
-            loadedRows += results.data.length;
-            progressBar.style.width = "100%"; // approx (without total rows we assume streaming)
-            progressBar.textContent = loadedRows + " rows";
-          },
-          complete: function() {
-            saveDatabases();
-            statusBox.innerHTML = "<p class='success'>✅ Database added successfully!</p>";
-            openDatabases();
-          },
-          error: function() {
-            err.textContent = "❌ Failed to parse CSV!";
-            err.style.display = "block";
-            statusBox.innerHTML = "";
-          }
-        });
+        let matches = [...text.matchAll(/"([^"]+)","gid":/g)];
+        let sheetNames = matches.map(m => m[1]);
+
+        if (sheetNames.length === 0) throw new Error("No sheets found!");
+
+        if (sheetNames.length === 1) {
+          loadSheetCSV(spreadsheetId, sheetNames[0]);
+        } else {
+          let selectHTML = `
+            <h3>Select a Sheet</h3>
+            <select id="sheetSelector">
+              ${sheetNames.map(name => `<option value="${name}">${name}</option>`).join("")}
+            </select>
+            <button onclick="confirmSheet('${spreadsheetId}')">Load</button>
+          `;
+          statusBox.innerHTML = selectHTML;
+        }
 
       } catch (e) {
         console.error(e);
-        err.textContent = "❌ Failed to fetch from Google Sheet!";
+        err.textContent = "❌ Failed to fetch sheet metadata!";
         err.style.display = "block";
         statusBox.innerHTML = "";
       }
+    }
+
+    function confirmSheet(spreadsheetId) {
+      let sheetName = document.getElementById("sheetSelector").value;
+      loadSheetCSV(spreadsheetId, sheetName);
+    }
+
+    // Step 2: Load CSV with PapaParse
+    function loadSheetCSV(spreadsheetId, sheetName) {
+      const statusBox = document.getElementById("statusBox");
+      const err = document.getElementById("errorBox");
+      const progressBar = document.getElementById("progressBar");
+      statusBox.innerHTML = `<p class='loading'>⏳ Loading <b>${sheetName}</b>...</p>`;
+      err.style.display = "none"; err.textContent = "";
+
+      let csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+      let dbName = sheetName + "_" + (Object.keys(databases).length + 1);
+      let loadedRows = 0;
+
+      Papa.parse(csvUrl, {
+        download: true,
+        header: true,
+        skipEmptyLines: true,
+        worker: true,
+        chunkSize: 5000,
+        chunk: function(results) {
+          if (!databases[dbName]) {
+            databases[dbName] = { headers: results.meta.fields.map(h => ({ name: h, type: "Text" })), rows: [] };
+          }
+          databases[dbName].rows.push(...results.data.map(row => results.meta.fields.map(h => row[h] || "")));
+
+          loadedRows += results.data.length;
+          progressBar.style.width = "100%";
+          progressBar.textContent = loadedRows + " rows";
+        },
+        complete: function() {
+          saveDatabases();
+          statusBox.innerHTML = `<p class='success'>✅ Loaded ${loadedRows} rows from <b>${sheetName}</b></p>`;
+          openDatabases();
+        },
+        error: function() {
+          err.textContent = "❌ Failed to parse CSV!";
+          err.style.display = "block";
+          statusBox.innerHTML = "";
+        }
+      });
     }
 
     function openDatabase(dbName, page = 1) {
@@ -174,13 +202,9 @@
       let tableHTML = `
         <div style="overflow-x:auto; max-height:70vh; border:1px solid #ccc; border-radius:4px;">
           <table>
-            <thead>
-              <tr>${db.headers.map(h => `<th>${h.name}</th>`).join("")}</tr>
-            </thead>
+            <thead><tr>${db.headers.map(h => `<th>${h.name}</th>`).join("")}</tr></thead>
             <tbody>
-              ${db.rows.slice(start, end).map(row => `
-                <tr>${row.map(cell => `<td>${cell || ""}</td>`).join("")}</tr>
-              `).join("")}
+              ${db.rows.slice(start, end).map(row => `<tr>${row.map(cell => `<td>${cell || ""}</td>`).join("")}</tr>`).join("")}
             </tbody>
           </table>
         </div>
@@ -207,6 +231,7 @@
       menu.style.top = rect.bottom + "px";
     }
     document.addEventListener("click", () => { document.getElementById("popupMenu").style.display = "none"; });
+
     function renameDatabase() {
       const newName = prompt("Enter new name:", currentPopupDB);
       if (newName && !databases[newName]) {
@@ -217,6 +242,7 @@
       }
       document.getElementById("popupMenu").style.display = "none";
     }
+
     function deleteDatabase() {
       if (confirm("Delete database '" + currentPopupDB + "'?")) {
         delete databases[currentPopupDB];
