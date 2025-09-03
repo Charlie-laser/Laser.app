@@ -2,67 +2,85 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Add Google Sheet Database</title>
+  <title>Google Sheet CSV Loader</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    #status { font-style: italic; color: blue; margin-top: 10px; }
-    #success { color: green; font-weight: bold; margin-top: 10px; display: none; }
-    #databases { margin-top: 20px; }
-    .db-item { padding: 8px; border: 1px solid #ccc; margin: 5px 0; border-radius: 4px; }
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    h2 {
+      margin-bottom: 10px;
+    }
+    input[type="text"] {
+      width: 70%;
+      padding: 8px;
+    }
+    button {
+      padding: 8px 12px;
+      margin-left: 5px;
+      cursor: pointer;
+    }
+    .status {
+      margin-top: 15px;
+      font-style: italic;
+    }
+    .success {
+      color: green;
+      font-weight: bold;
+    }
+    .error {
+      color: red;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
-  <h2>Add Google Sheet Database</h2>
-  <input type="text" id="sheetUrl" placeholder="Paste Google Sheet link here" size="100">
-  <button onclick="addSheet()">Add</button>
-  <div id="status"></div>
-  <div id="success">✅ Uploading done!</div>
-
-  <h3>Databases</h3>
-  <div id="databases"></div>
+  <h2>Add Google Sheet Database (CSV)</h2>
+  <input type="text" id="csvLink" placeholder="Paste Google Sheet CSV link here">
+  <button onclick="loadCSV()">Load CSV</button>
+  <div id="status" class="status"></div>
+  <div id="sheetName"></div>
 
   <script>
-    async function addSheet() {
-      const url = document.getElementById("sheetUrl").value;
-      const status = document.getElementById("status");
-      const success = document.getElementById("success");
-      status.textContent = "⌛ Loading data from Google Sheet...";
-      success.style.display = "none";
+    async function loadCSV() {
+      const url = document.getElementById("csvLink").value.trim();
+      const statusEl = document.getElementById("status");
+      const sheetEl = document.getElementById("sheetName");
+
+      if (!url) {
+        statusEl.textContent = "⚠️ Please enter a CSV link!";
+        statusEl.className = "status error";
+        return;
+      }
+
+      statusEl.textContent = "⏳ Loading data from Google Sheet...";
+      statusEl.className = "status";
 
       try {
-        // CSV লিংক বানানো
-        let csvUrl = url;
-        if (!url.includes("output=csv")) {
-          if (url.includes("/edit")) {
-            csvUrl = url.replace("/edit", "/gviz/tq?tqx=out:csv");
-          } else {
-            csvUrl += "&output=csv";
-          }
-        }
-
-        // CSV ডাটা ফেচ
-        const response = await fetch(csvUrl);
-        if (!response.ok) throw new Error("Failed to fetch");
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Failed to fetch CSV");
 
         const data = await response.text();
 
-        // সব ডাটা ঠিকঠাক পেলে তখনই DB এ যোগ করব
-        addDatabaseEntry("Google Sheet DB", data);
+        // Split CSV lines
+        const rows = data.split("\n").filter(r => r.trim().length > 0);
 
-        status.textContent = "";
-        success.style.display = "block"; // ✅ done দেখাবে
+        // Try to detect sheet name (fallback = CSV Sheet)
+        let sheetName = "CSV Sheet";
+        const gidMatch = url.match(/gid=([0-9]+)/);
+        if (gidMatch) {
+          sheetName = "Sheet (gid=" + gidMatch[1] + ")";
+        }
+
+        statusEl.textContent = "✅ Upload Done (" + rows.length + " rows)";
+        statusEl.className = "status success";
+        sheetEl.textContent = "📄 Loaded: " + sheetName;
+
       } catch (err) {
-        status.textContent = "❌ Failed to fetch from Google Sheet!";
         console.error(err);
+        statusEl.textContent = "❌ Failed to load CSV!";
+        statusEl.className = "status error";
       }
-    }
-
-    function addDatabaseEntry(name, data) {
-      const dbList = document.getElementById("databases");
-      const div = document.createElement("div");
-      div.className = "db-item";
-      div.textContent = name + " (" + data.split("\n").length + " rows)";
-      dbList.appendChild(div);
     }
   </script>
 </body>
