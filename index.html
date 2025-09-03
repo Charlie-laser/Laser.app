@@ -22,17 +22,8 @@
     #errorBox { color: red; margin: 10px 0; display: none; }
     .loading { color: blue; font-style: italic; margin: 10px 0; }
     .success { color: green; margin: 10px 0; }
-
     table { border-collapse: collapse; width: 100%; font-size: 14px; }
-    thead th { 
-      position: sticky; 
-      top: 0; 
-      background: #f0f0f0; 
-      border: 1px solid #ccc; 
-      padding: 6px; 
-      text-align: left;
-      z-index: 1;
-    }
+    thead th { position: sticky; top: 0; background: #f0f0f0; border: 1px solid #ccc; padding: 6px; text-align: left; z-index: 1; }
     tbody td { border: 1px solid #ddd; padding: 6px; }
     tbody tr:nth-child(even) { background: #fafafa; }
     tbody tr:hover { background: #f1f7ff; }
@@ -40,7 +31,6 @@
 </head>
 <body>
 
-  <!-- Sidebar -->
   <div id="menu">
     <h3>Menu</h3>
     <div onclick="goHome()">🏠 Home</div>
@@ -49,13 +39,11 @@
     <div onclick="openForms()">📋 Forms</div>
   </div>
 
-  <!-- Content -->
   <div id="content">
     <h2>Welcome</h2>
     <p>Select an option from the menu.</p>
   </div>
 
-  <!-- Popup Menu -->
   <div id="popupMenu" class="menu-popup">
     <div onclick="renameDatabase()">✏️ Rename</div>
     <div onclick="deleteDatabase()">🗑 Delete</div>
@@ -64,7 +52,7 @@
   <script>
     let databases = JSON.parse(localStorage.getItem("databases") || "{}");
     let currentPopupDB = null;
-    let historyStack = [];  
+    let historyStack = [];
 
     function saveDatabases() {
       localStorage.setItem("databases", JSON.stringify(databases));
@@ -125,18 +113,21 @@
 
       Papa.parse(file, {
         header: true,
+        skipEmptyLines: true,  // ✅ খালি লাইন বাদ
         complete: function(results) {
           try {
-            if (!results.data || results.data.length === 0) throw new Error("Empty data");
-            const headers = Object.keys(results.data[0]);
+            const cleanData = results.data.filter(row => Object.keys(row).length > 0);
+            if (!cleanData.length) throw new Error("Empty data");
+            
+            const headers = Object.keys(cleanData[0]);
             let dbName = file.name.replace(".csv", "");
             databases[dbName] = {
               headers: headers.map(h => ({ name: h, type: "Text" })),
-              rows: results.data.map(row => headers.map(h => row[h]))
+              rows: cleanData.map(row => headers.map(h => row[h]))
             };
             saveDatabases();
             statusBox.innerHTML = "<p class='success'>✅ Upload Done!</p>";
-            openDatabases();
+            setTimeout(openDatabases, 1000); // success দেখানোর পর database খোলা
           } catch (e) {
             console.error(e);
             err.textContent = "❌ Failed to parse CSV!";
@@ -173,17 +164,20 @@
 
         Papa.parse(csvText, {
           header: true,
+          skipEmptyLines: true, // ✅ খালি লাইন বাদ
           complete: function(results) {
-            if (!results.data || results.data.length === 0) throw new Error("Empty sheet");
-            const headers = Object.keys(results.data[0]);
+            const cleanData = results.data.filter(row => Object.keys(row).length > 0);
+            if (!cleanData.length) throw new Error("Empty sheet");
+            
+            const headers = Object.keys(cleanData[0]);
             let dbName = "GoogleSheetDB_" + new Date().getTime();
             databases[dbName] = {
               headers: headers.map(h => ({ name: h, type: "Text" })),
-              rows: results.data.map(row => headers.map(h => row[h]))
+              rows: cleanData.map(row => headers.map(h => row[h]))
             };
             saveDatabases();
             status.innerHTML = "<p class='success'>✅ Upload Done!</p>";
-            openDatabases();
+            setTimeout(openDatabases, 1000);
           }
         });
 
@@ -236,6 +230,7 @@
       menu.style.top = rect.bottom + "px";
     }
     document.addEventListener("click", () => { document.getElementById("popupMenu").style.display = "none"; });
+
     function renameDatabase() {
       const newName = prompt("Enter new name:", currentPopupDB);
       if (newName && !databases[newName]) {
@@ -246,6 +241,7 @@
       }
       document.getElementById("popupMenu").style.display = "none";
     }
+
     function deleteDatabase() {
       if (confirm("Delete database '" + currentPopupDB + "'?")) {
         delete databases[currentPopupDB];
