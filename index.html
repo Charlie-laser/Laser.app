@@ -48,7 +48,6 @@
     <div onclick="goBack()">⬅ Back</div>
     <div onclick="openDatabases()">📂 Databases</div>
     <div onclick="openForms()">📋 Forms</div>
-    <div onclick="openReports()">📑 Reports</div>
   </div>
 
   <!-- Content -->
@@ -78,7 +77,6 @@
       content.innerHTML = html;
     }
 
-    /* ---------- DATABASES ---------- */
     function openDatabases() {
       setContent(`
         <h2>Databases</h2>
@@ -128,7 +126,7 @@
 
         Papa.parse(csvText, {
           header: true,
-          worker: true,
+          worker: true, // faster parsing
           complete: function(results) {
             if (!results.data || results.data.length === 0) throw new Error("Empty data");
             const headers = Object.keys(results.data[0]);
@@ -180,35 +178,11 @@
           <button onclick="openDatabase('${dbName}', ${page + 1})" ${page === totalPages ? "disabled" : ""}>Next ➡</button>
         </div>
       `;
+
+      // saveHistory TRUE (default)
       setContent(`<h2>${dbName}</h2>${tableHTML}`);
     }
 
-    /* ---------- FORMS ---------- */
-    function openForms() { 
-      setContent("<h2>Forms</h2><p>Forms functionality will go here.</p>"); 
-    }
-
-    /* ---------- REPORTS ---------- */
-    function openReports() {
-      setContent(`
-        <h2>Reports</h2>
-        <p>Select a report to view:</p>
-        <button onclick="openSampleReport()">📊 Sample Report</button>
-      `);
-    }
-
-    function openSampleReport() {
-      setContent(`
-        <h2>Sample Report</h2>
-        <ul>
-          <li>Report Item 1</li>
-          <li>Report Item 2</li>
-          <li>Report Item 3</li>
-        </ul>
-      `);
-    }
-
-    /* ---------- COMMON ---------- */
     function goHome() { 
       setContent("<h2>Welcome</h2><p>Select an option from the menu.</p>"); 
     }
@@ -217,6 +191,10 @@
       if (historyStack.length > 0) {
         document.getElementById("content").innerHTML = historyStack.pop();
       }
+    }
+
+    function openForms() { 
+      setContent("<h2>Forms</h2><p>Forms functionality will go here.</p>"); 
     }
 
     function showMenu(e, dbName) {
@@ -228,10 +206,7 @@
       menu.style.left = rect.left + "px";
       menu.style.top = rect.bottom + "px";
     }
-
-    document.addEventListener("click", () => { 
-      document.getElementById("popupMenu").style.display = "none"; 
-    });
+    document.addEventListener("click", () => { document.getElementById("popupMenu").style.display = "none"; });
 
     function renameDatabase() {
       const newName = prompt("Enter new name:", currentPopupDB);
