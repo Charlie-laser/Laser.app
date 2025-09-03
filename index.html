@@ -71,13 +71,16 @@
       localStorage.setItem("databases", JSON.stringify(databases));
     }
 
-    function setContent(html, saveHistory = true) {
+    // --- Modified setContent: এখন state ফাংশন সেভ করে
+    function setContent(html, saveHistory = true, state = null) {
       const content = document.getElementById("content");
-      if (saveHistory) historyStack.push(content.innerHTML);
+      if (saveHistory && state) {
+        historyStack.push(state);
+      }
       content.innerHTML = html;
     }
 
-    function openDatabases() {
+    function openDatabases(saveHistory = true) {
       setContent(`
         <h2>Databases</h2>
         <button onclick="showImportForm()">➕ Add Database</button>
@@ -91,17 +94,17 @@
             `).join("") 
           : "<p>No databases yet.</p>"}
         </div>
-      `);
+      `, saveHistory, () => openDatabases(false));
     }
 
-    function showImportForm() {
+    function showImportForm(saveHistory = true) {
       setContent(`
         <h2>Add Google Sheet Database</h2>
         <input type="text" id="sheetURL" placeholder="Paste Google Sheet CSV URL" style="width:80%">
         <button onclick="importSheet()">Add</button>
         <div id="statusBox"></div>
         <div id="errorBox"></div>
-      `);
+      `, saveHistory, () => showImportForm(false));
     }
 
     async function importSheet() {
@@ -152,7 +155,7 @@
       }
     }
 
-    function openDatabase(dbName, page = 1) {
+    function openDatabase(dbName, page = 1, saveHistory = true) {
       const db = databases[dbName];
       const rowsPerPage = 100;
       const start = (page - 1) * rowsPerPage;
@@ -178,12 +181,25 @@
           <button onclick="openDatabase('${dbName}', ${page + 1})" ${page === totalPages ? "disabled" : ""}>Next ➡</button>
         </div>
       `;
-      setContent(`<h2>${dbName}</h2>${tableHTML}`, false);
+      setContent(`<h2>${dbName}</h2>${tableHTML}`, saveHistory, () => openDatabase(dbName, page, false));
     }
 
-    function goHome() { setContent("<h2>Welcome</h2><p>Select an option from the menu.</p>"); }
-    function goBack() { if (historyStack.length > 0) document.getElementById("content").innerHTML = historyStack.pop(); }
-    function openForms() { setContent("<h2>Forms</h2><p>Forms functionality will go here.</p>"); }
+    function goHome(saveHistory = true) { 
+      setContent("<h2>Welcome</h2><p>Select an option from the menu.</p>", saveHistory, () => goHome(false)); 
+    }
+
+    function goBack() { 
+      if (historyStack.length > 0) {
+        const lastState = historyStack.pop();
+        lastState(); // function আবার চালু হবে
+      } else {
+        goHome(false);
+      }
+    }
+
+    function openForms(saveHistory = true) { 
+      setContent("<h2>Forms</h2><p>Forms functionality will go here.</p>", saveHistory, () => openForms(false)); 
+    }
 
     function showMenu(e, dbName) {
       e.stopPropagation();
