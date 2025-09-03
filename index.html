@@ -122,19 +122,26 @@
         const response = await fetch(url);
         if (!response.ok) throw new Error("Network error");
 
-        const csvText = await response.text();
-
-        Papa.parse(csvText, {
+        let allRows = [];
+        Papa.parse(await response.text(), {
           header: true,
-          worker: true, // faster parsing
+          worker: true,  
+          step: function(row) {
+            allRows.push(Object.values(row.data));
+
+            if (allRows.length % 1000 === 0) {
+              statusBox.innerHTML = `<p class='loading'>📥 Imported ${allRows.length} rows...</p>`;
+            }
+          },
           complete: function(results) {
-            if (!results.data || results.data.length === 0) throw new Error("Empty data");
-            const headers = Object.keys(results.data[0]);
+            const headers = Object.keys(results.meta.fields || results.data[0] || {});
             let dbName = "Sheet_" + (Object.keys(databases).length + 1);
+
             databases[dbName] = {
               headers: headers.map(h => ({ name: h, type: "Text" })),
-              rows: results.data.map(row => headers.map(h => row[h]))
+              rows: allRows
             };
+
             saveDatabases();
             statusBox.innerHTML = "<p class='success'>✅ Database added successfully!</p>";
             openDatabases();
@@ -179,7 +186,6 @@
         </div>
       `;
 
-      // saveHistory TRUE (default)
       setContent(`<h2>${dbName}</h2>${tableHTML}`);
     }
 
