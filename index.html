@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Database App</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
   <style>
     body { font-family: Arial, sans-serif; display: flex; margin: 0; height: 100vh; overflow: hidden; }
     #menu { width: 220px; background: #f4f4f4; padding: 10px; border-right: 1px solid #ccc; height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; }
@@ -10,6 +11,17 @@
     #menu div { padding: 8px; cursor: pointer; border-radius: 4px; }
     #menu div:hover { background: #ddd; }
     #content { flex: 1; padding: 20px; margin-left: 240px; height: 100vh; overflow-y: auto; }
+
+    /* Excel-like Table */
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    thead th { position: sticky; top: 0; background: #f0f0f0; border: 1px solid #ccc; padding: 6px; }
+    tbody td { border: 1px solid #ddd; padding: 6px; }
+    tbody tr:nth-child(even) { background: #fafafa; }
+    tbody tr:hover { background: #f1f7ff; }
+
+    .loading { color: blue; font-style: italic; }
+    .success { color: green; }
+    .error { color: red; }
   </style>
 </head>
 <body>
@@ -31,16 +43,23 @@
   </div>
 
   <script>
+    let databases = JSON.parse(localStorage.getItem("databases") || "{}");
     let historyStack = [];
 
+    function saveDatabases() {
+      localStorage.setItem("databases", JSON.stringify(databases));
+    }
+
+    // setContent with history support
     function setContent(html, saveHistory = true) {
       const content = document.getElementById("content");
       if (saveHistory) {
-        historyStack.push(content.innerHTML); // শুধু তখন save হবে
+        historyStack.push(content.innerHTML);
       }
       content.innerHTML = html;
     }
 
+    // back button
     function goBack() {
       if (historyStack.length > 0) {
         const prev = historyStack.pop();
@@ -54,38 +73,116 @@
       setContent(`<h2>Welcome</h2><p>Select an option from the menu.</p>`);
     }
 
+    // Databases
     function openDatabases() {
       setContent(`
         <h2>Databases</h2>
-        <p>Here you can see your databases.</p>
-        <button onclick="openDatabase('Sample DB')">Open Sample Database</button>
+        <button onclick="showImportForm()">➕ Add Google Sheet Database</button>
+        <div id="dbList">
+          ${Object.keys(databases).length ?
+            Object.keys(databases).map(db => `
+              <div style="margin:6px 0; padding:6px; border:1px solid #ccc; border-radius:4px; cursor:pointer;" onclick="openDatabase('${db}')">
+                📊 ${db}
+              </div>
+            `).join("")
+          : "<p>No databases yet.</p>"}
+        </div>
       `);
     }
 
-    function openDatabase(name) {
+    function showImportForm() {
       setContent(`
-        <h2>${name}</h2>
-        <p>This is the database view.</p>
+        <h2>Add Google Sheet Database</h2>
+        <input type="text" id="sheetURL" placeholder="Paste Google Sheet CSV URL" style="width:70%">
+        <button onclick="importSheet()">Add</button>
+        <div id="statusBox"></div>
       `);
     }
 
+    async function importSheet() {
+      const url = document.getElementById("sheetURL").value.trim();
+      const statusBox = document.getElementById("statusBox");
+      statusBox.innerHTML = "<p class='loading'>⏳ Loading...</p>";
+
+      if (!url.includes("output=csv")) {
+        statusBox.innerHTML = "<p class='error'>⚠️ Invalid CSV link</p>";
+        return;
+      }
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Network error");
+
+        const csvText = await response.text();
+        Papa.parse(csvText, {
+          header: true,
+          complete: function(results) {
+            if (!results.data || results.data.length === 0) throw new Error("Empty data");
+
+            const headers = Object.keys(results.data[0]);
+            let dbName = "Sheet_" + (Object.keys(databases).length + 1);
+
+            databases[dbName] = {
+              headers: headers,
+              rows: results.data.map(row => headers.map(h => row[h] || ""))
+            };
+            saveDatabases();
+
+            statusBox.innerHTML = "<p class='success'>✅ Database added!</p>";
+            openDatabases();
+          }
+        });
+      } catch (e) {
+        console.error(e);
+        statusBox.innerHTML = "<p class='error'>❌ Failed to import!</p>";
+      }
+    }
+
+    function openDatabase(dbName, page = 1) {
+      const db = databases[dbName];
+      const rowsPerPage = 50;
+      const start = (page - 1) * rowsPerPage;
+      const end = start + rowsPerPage;
+      const totalPages = Math.ceil(db.rows.length / rowsPerPage);
+
+      let tableHTML = `
+        <div style="overflow-x:auto; max-height:70vh; border:1px solid #ccc;">
+          <table>
+            <thead>
+              <tr>${db.headers.map(h => `<th>${h}</th>`).join("")}</tr>
+            </thead>
+            <tbody>
+              ${db.rows.slice(start, end).map(row => `
+                <tr>${row.map(cell => `<td>${cell}</td>`).join("")}</tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+        <div style="margin-top:10px; text-align:center;">
+          <button onclick="openDatabase('${dbName}', ${page - 1})" ${page === 1 ? "disabled" : ""}>⬅ Prev</button>
+          <span> Page ${page} of ${totalPages} </span>
+          <button onclick="openDatabase('${dbName}', ${page + 1})" ${page === totalPages ? "disabled" : ""}>Next ➡</button>
+        </div>
+      `;
+      setContent(`<h2>${dbName}</h2>${tableHTML}`);
+    }
+
+    // Forms
     function openForms() {
       setContent(`<h2>Forms</h2><p>Forms section goes here.</p>`);
     }
 
+    // Reports
     function openReports() {
       setContent(`
         <h2>Reports</h2>
         <p>Select a report:</p>
-        <button onclick="openSampleReport()">Open Sample Report</button>
+        <button onclick="openSampleReport()">📑 Open Sample Report</button>
       `);
     }
 
     function openSampleReport() {
-      setContent(`
-        <h2>Sample Report</h2>
-        <p>This is a sample report page.</p>
-      `);
+      setContent(`<h2>Sample Report</h2><p>This is a sample report page.</p>`);
     }
   </script>
 </body>
