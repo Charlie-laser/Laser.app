@@ -22,21 +22,6 @@
     #errorBox { color: red; margin: 10px 0; display: none; }
     .loading { color: blue; font-style: italic; margin: 10px 0; }
     .success { color: green; margin: 10px 0; }
-
-    /* Excel-like Table Styling */
-    table { border-collapse: collapse; width: 100%; font-size: 14px; }
-    thead th { 
-      position: sticky; 
-      top: 0; 
-      background: #f0f0f0; 
-      border: 1px solid #ccc; 
-      padding: 6px; 
-      text-align: left;
-      z-index: 1;
-    }
-    tbody td { border: 1px solid #ddd; padding: 6px; }
-    tbody tr:nth-child(even) { background: #fafafa; }
-    tbody tr:hover { background: #f1f7ff; }
   </style>
 </head>
 <body>
@@ -65,7 +50,7 @@
   <script>
     let databases = JSON.parse(localStorage.getItem("databases") || "{}");
     let currentPopupDB = null;
-    let historyStack = [];  
+    let historyStack = [];
 
     function saveDatabases() {
       localStorage.setItem("databases", JSON.stringify(databases));
@@ -109,7 +94,7 @@
       const statusBox = document.getElementById("statusBox");
       const err = document.getElementById("errorBox");
       err.style.display = "none"; err.textContent = "";
-      statusBox.innerHTML = "<p class='loading'>⏳ Loading data from Google Sheet...</p>";
+      statusBox.innerHTML = "<p class='loading'>⏳ Importing data...</p>";
 
       if (!url.includes("output=csv")) {
         err.textContent = "⚠️ Please provide a valid Google Sheet CSV link.";
@@ -122,18 +107,25 @@
         const response = await fetch(url);
         if (!response.ok) throw new Error("Network error");
 
-        const csvText = await response.text();
+        let allRows = [];
+        let headers = [];
 
-        Papa.parse(csvText, {
+        Papa.parse(await response.text(), {
           header: true,
-          worker: true, // faster parsing
-          complete: function(results) {
-            if (!results.data || results.data.length === 0) throw new Error("Empty data");
-            const headers = Object.keys(results.data[0]);
+          worker: true,
+          step: function(row, parser) {
+            if (headers.length === 0) headers = Object.keys(row.data);
+            allRows.push(Object.values(row.data));
+
+            if (allRows.length % 500 === 0) {
+              statusBox.innerHTML = `<p class='loading'>📥 Processed ${allRows.length} rows...</p>`;
+            }
+          },
+          complete: function() {
             let dbName = "Sheet_" + (Object.keys(databases).length + 1);
             databases[dbName] = {
               headers: headers.map(h => ({ name: h, type: "Text" })),
-              rows: results.data.map(row => headers.map(h => row[h]))
+              rows: allRows
             };
             saveDatabases();
             statusBox.innerHTML = "<p class='success'>✅ Database added successfully!</p>";
@@ -195,6 +187,7 @@
       menu.style.top = rect.bottom + "px";
     }
     document.addEventListener("click", () => { document.getElementById("popupMenu").style.display = "none"; });
+
     function renameDatabase() {
       const newName = prompt("Enter new name:", currentPopupDB);
       if (newName && !databases[newName]) {
@@ -205,6 +198,7 @@
       }
       document.getElementById("popupMenu").style.display = "none";
     }
+
     function deleteDatabase() {
       if (confirm("Delete database '" + currentPopupDB + "'?")) {
         delete databases[currentPopupDB];
