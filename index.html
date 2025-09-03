@@ -22,6 +22,21 @@
     #errorBox { color: red; margin: 10px 0; display: none; }
     .loading { color: blue; font-style: italic; margin: 10px 0; }
     .success { color: green; margin: 10px 0; }
+
+    /* Excel-like Table Styling */
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    thead th { 
+      position: sticky; 
+      top: 0; 
+      background: #f0f0f0; 
+      border: 1px solid #ccc; 
+      padding: 6px; 
+      text-align: left;
+      z-index: 1;
+    }
+    tbody td { border: 1px solid #ddd; padding: 6px; }
+    tbody tr:nth-child(even) { background: #fafafa; }
+    tbody tr:hover { background: #f1f7ff; }
   </style>
 </head>
 <body>
@@ -50,7 +65,7 @@
   <script>
     let databases = JSON.parse(localStorage.getItem("databases") || "{}");
     let currentPopupDB = null;
-    let historyStack = [];
+    let historyStack = [];  
 
     function saveDatabases() {
       localStorage.setItem("databases", JSON.stringify(databases));
@@ -94,7 +109,7 @@
       const statusBox = document.getElementById("statusBox");
       const err = document.getElementById("errorBox");
       err.style.display = "none"; err.textContent = "";
-      statusBox.innerHTML = "<p class='loading'>⏳ Importing data...</p>";
+      statusBox.innerHTML = "<p class='loading'>⏳ Loading data from Google Sheet...</p>";
 
       if (!url.includes("output=csv")) {
         err.textContent = "⚠️ Please provide a valid Google Sheet CSV link.";
@@ -108,25 +123,25 @@
         if (!response.ok) throw new Error("Network error");
 
         let allRows = [];
-        let headers = [];
-
         Papa.parse(await response.text(), {
           header: true,
-          worker: true,
-          step: function(row, parser) {
-            if (headers.length === 0) headers = Object.keys(row.data);
+          worker: true,  
+          step: function(row) {
             allRows.push(Object.values(row.data));
 
-            if (allRows.length % 500 === 0) {
-              statusBox.innerHTML = `<p class='loading'>📥 Processed ${allRows.length} rows...</p>`;
+            if (allRows.length % 1000 === 0) {
+              statusBox.innerHTML = `<p class='loading'>📥 Imported ${allRows.length} rows...</p>`;
             }
           },
-          complete: function() {
+          complete: function(results) {
+            const headers = Object.keys(results.meta.fields || results.data[0] || {});
             let dbName = "Sheet_" + (Object.keys(databases).length + 1);
+
             databases[dbName] = {
               headers: headers.map(h => ({ name: h, type: "Text" })),
               rows: allRows
             };
+
             saveDatabases();
             statusBox.innerHTML = "<p class='success'>✅ Database added successfully!</p>";
             openDatabases();
@@ -170,12 +185,23 @@
           <button onclick="openDatabase('${dbName}', ${page + 1})" ${page === totalPages ? "disabled" : ""}>Next ➡</button>
         </div>
       `;
-      setContent(`<h2>${dbName}</h2>${tableHTML}`, false);
+
+      setContent(`<h2>${dbName}</h2>${tableHTML}`);
     }
 
-    function goHome() { setContent("<h2>Welcome</h2><p>Select an option from the menu.</p>"); }
-    function goBack() { if (historyStack.length > 0) document.getElementById("content").innerHTML = historyStack.pop(); }
-    function openForms() { setContent("<h2>Forms</h2><p>Forms functionality will go here.</p>"); }
+    function goHome() { 
+      setContent("<h2>Welcome</h2><p>Select an option from the menu.</p>"); 
+    }
+
+    function goBack() { 
+      if (historyStack.length > 0) {
+        document.getElementById("content").innerHTML = historyStack.pop();
+      }
+    }
+
+    function openForms() { 
+      setContent("<h2>Forms</h2><p>Forms functionality will go here.</p>"); 
+    }
 
     function showMenu(e, dbName) {
       e.stopPropagation();
