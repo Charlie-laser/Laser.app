@@ -22,13 +22,25 @@
     #errorBox { color: red; margin: 10px 0; display: none; }
     .loading { color: blue; font-style: italic; margin: 10px 0; }
     .success { color: green; margin: 10px 0; }
+
+    /* Progress bar */
+    .progress-container { width: 100%; background: #eee; margin-top: 10px; height: 20px; border-radius: 5px; overflow: hidden; }
+    .progress-bar { height: 100%; width: 0%; background: #2196F3; color: white; text-align: center; font-size: 12px; line-height: 20px; transition: width 0.2s; }
+
+    /* Excel-like Table Styling */
     table { border-collapse: collapse; width: 100%; font-size: 14px; }
-    thead th { position: sticky; top: 0; background: #f0f0f0; border: 1px solid #ccc; padding: 6px; text-align: left; z-index: 1; }
+    thead th { 
+      position: sticky; 
+      top: 0; 
+      background: #f0f0f0; 
+      border: 1px solid #ccc; 
+      padding: 6px; 
+      text-align: left;
+      z-index: 1;
+    }
     tbody td { border: 1px solid #ddd; padding: 6px; }
     tbody tr:nth-child(even) { background: #fafafa; }
     tbody tr:hover { background: #f1f7ff; }
-    .progress-container { width: 100%; background: #eee; border-radius: 4px; margin-top: 10px; }
-    .progress-bar { height: 20px; width: 0%; background: #2196F3; text-align: center; color: white; border-radius: 4px; }
   </style>
 </head>
 <body>
@@ -92,8 +104,8 @@
         <input type="text" id="sheetURL" placeholder="Paste Google Sheet CSV URL" style="width:80%">
         <button onclick="importSheet()">Add</button>
         <div id="statusBox"></div>
-        <div class="progress-container"><div id="progressBar" class="progress-bar">0%</div></div>
         <div id="errorBox"></div>
+        <div class="progress-container"><div id="progressBar" class="progress-bar">0%</div></div>
       `);
     }
 
@@ -103,7 +115,6 @@
       const err = document.getElementById("errorBox");
       const progressBar = document.getElementById("progressBar");
       err.style.display = "none"; err.textContent = "";
-      progressBar.style.width = "0%"; progressBar.textContent = "0%";
       statusBox.innerHTML = "<p class='loading'>⏳ Loading data from Google Sheet...</p>";
 
       if (!url.includes("output=csv")) {
@@ -113,35 +124,27 @@
         return;
       }
 
+      let dbName = "Sheet_" + (Object.keys(databases).length + 1);
+      let loadedRows = 0;
+
       try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error("Network error");
-
-        const csvText = await response.text();
-
-        // 🚀 একবারে parse (super fast)
-        Papa.parse(csvText, {
+        Papa.parse(url, {
+          download: true,
           header: true,
           skipEmptyLines: true,
-          complete: function(results) {
-            const headers = results.meta.fields || [];
-            const allRows = results.data.map(row => headers.map(h => row[h] || ""));
-
-            if (allRows.length === 0) {
-              err.textContent = "❌ No data found in the sheet!";
-              err.style.display = "block";
-              statusBox.innerHTML = "";
-              return;
+          worker: true,
+          chunkSize: 5000, // প্রতি 5000 row এ ভাগ করে লোড করবে
+          chunk: function(results, parser) {
+            if (!databases[dbName]) {
+              databases[dbName] = { headers: results.meta.fields.map(h => ({ name: h, type: "Text" })), rows: [] };
             }
+            databases[dbName].rows.push(...results.data.map(row => results.meta.fields.map(h => row[h] || "")));
 
-            progressBar.style.width = "100%";
-            progressBar.textContent = "100%";
-
-            let dbName = "Sheet_" + (Object.keys(databases).length + 1);
-            databases[dbName] = {
-              headers: headers.map(h => ({ name: h, type: "Text" })),
-              rows: allRows
-            };
+            loadedRows += results.data.length;
+            progressBar.style.width = "100%"; // approx (without total rows we assume streaming)
+            progressBar.textContent = loadedRows + " rows";
+          },
+          complete: function() {
             saveDatabases();
             statusBox.innerHTML = "<p class='success'>✅ Database added successfully!</p>";
             openDatabases();
