@@ -26,13 +26,11 @@
       const url = document.getElementById("sheetUrl").value;
       const status = document.getElementById("status");
       const success = document.getElementById("success");
-
-      // Loading start
       status.textContent = "⌛ Loading data from Google Sheet...";
       success.style.display = "none";
 
       try {
-        // Convert link to CSV
+        // CSV লিংক বানানো
         let csvUrl = url;
         if (!url.includes("output=csv")) {
           if (url.includes("/edit")) {
@@ -42,26 +40,23 @@
           }
         }
 
-        // Fetch CSV
+        // CSV ডাটা ফেচ
         const response = await fetch(csvUrl);
         if (!response.ok) throw new Error("Failed to fetch");
 
         const data = await response.text();
 
-        // সব ডাটা লোড হওয়ার পরেই Database এ যোগ করব
+        // সব ডাটা ঠিকঠাক পেলে তখনই DB এ যোগ করব
         addDatabaseEntry("Google Sheet DB", data);
 
-        // Done দেখানো
         status.textContent = "";
-        success.style.display = "block";
-
+        success.style.display = "block"; // ✅ done দেখাবে
       } catch (err) {
         status.textContent = "❌ Failed to fetch from Google Sheet!";
         console.error(err);
       }
     }
 
-    // Database লিস্টে এন্ট্রি যোগ
     function addDatabaseEntry(name, data) {
       const dbList = document.getElementById("databases");
       const div = document.createElement("div");
