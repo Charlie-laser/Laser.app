@@ -122,26 +122,19 @@
         const response = await fetch(url);
         if (!response.ok) throw new Error("Network error");
 
-        let allRows = [];
-        Papa.parse(await response.text(), {
+        const csvText = await response.text();
+
+        Papa.parse(csvText, {
           header: true,
-          worker: true,  
-          step: function(row) {
-            allRows.push(Object.values(row.data));
-
-            if (allRows.length % 1000 === 0) {
-              statusBox.innerHTML = `<p class='loading'>📥 Imported ${allRows.length} rows...</p>`;
-            }
-          },
+          worker: true, // faster parsing
           complete: function(results) {
-            const headers = Object.keys(results.meta.fields || results.data[0] || {});
+            if (!results.data || results.data.length === 0) throw new Error("Empty data");
+            const headers = Object.keys(results.data[0]);
             let dbName = "Sheet_" + (Object.keys(databases).length + 1);
-
             databases[dbName] = {
               headers: headers.map(h => ({ name: h, type: "Text" })),
-              rows: allRows
+              rows: results.data.map(row => headers.map(h => row[h]))
             };
-
             saveDatabases();
             statusBox.innerHTML = "<p class='success'>✅ Database added successfully!</p>";
             openDatabases();
@@ -185,23 +178,12 @@
           <button onclick="openDatabase('${dbName}', ${page + 1})" ${page === totalPages ? "disabled" : ""}>Next ➡</button>
         </div>
       `;
-
-      setContent(`<h2>${dbName}</h2>${tableHTML}`);
+      setContent(`<h2>${dbName}</h2>${tableHTML}`, false);
     }
 
-    function goHome() { 
-      setContent("<h2>Welcome</h2><p>Select an option from the menu.</p>"); 
-    }
-
-    function goBack() { 
-      if (historyStack.length > 0) {
-        document.getElementById("content").innerHTML = historyStack.pop();
-      }
-    }
-
-    function openForms() { 
-      setContent("<h2>Forms</h2><p>Forms functionality will go here.</p>"); 
-    }
+    function goHome() { setContent("<h2>Welcome</h2><p>Select an option from the menu.</p>"); }
+    function goBack() { if (historyStack.length > 0) document.getElementById("content").innerHTML = historyStack.pop(); }
+    function openForms() { setContent("<h2>Forms</h2><p>Forms functionality will go here.</p>"); }
 
     function showMenu(e, dbName) {
       e.stopPropagation();
@@ -213,7 +195,6 @@
       menu.style.top = rect.bottom + "px";
     }
     document.addEventListener("click", () => { document.getElementById("popupMenu").style.display = "none"; });
-
     function renameDatabase() {
       const newName = prompt("Enter new name:", currentPopupDB);
       if (newName && !databases[newName]) {
@@ -224,7 +205,6 @@
       }
       document.getElementById("popupMenu").style.display = "none";
     }
-
     function deleteDatabase() {
       if (confirm("Delete database '" + currentPopupDB + "'?")) {
         delete databases[currentPopupDB];
