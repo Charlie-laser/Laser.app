@@ -22,6 +22,21 @@
     #errorBox { color: red; margin: 10px 0; display: none; }
     .loading { color: blue; font-style: italic; margin: 10px 0; }
     .success { color: green; margin: 10px 0; }
+
+    /* Excel-like Table Styling */
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    thead th { 
+      position: sticky; 
+      top: 0; 
+      background: #f0f0f0; 
+      border: 1px solid #ccc; 
+      padding: 6px; 
+      text-align: left;
+      z-index: 1;
+    }
+    tbody td { border: 1px solid #ddd; padding: 6px; }
+    tbody tr:nth-child(even) { background: #fafafa; }
+    tbody tr:hover { background: #f1f7ff; }
   </style>
 </head>
 <body>
@@ -94,7 +109,7 @@
       const statusBox = document.getElementById("statusBox");
       const err = document.getElementById("errorBox");
       err.style.display = "none"; err.textContent = "";
-      statusBox.innerHTML = "<p class='loading'>⏳ Uploading...</p>";
+      statusBox.innerHTML = "<p class='loading'>⏳ Loading data from Google Sheet...</p>";
 
       if (!url.includes("output=csv")) {
         err.textContent = "⚠️ Please provide a valid Google Sheet CSV link.";
@@ -104,9 +119,14 @@
       }
 
       try {
-        Papa.parse(url, {
-          download: true,
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Network error");
+
+        const csvText = await response.text();
+
+        Papa.parse(csvText, {
           header: true,
+          worker: true, // faster parsing
           complete: function(results) {
             if (!results.data || results.data.length === 0) throw new Error("Empty data");
             const headers = Object.keys(results.data[0]);
@@ -123,10 +143,12 @@
             throw new Error("Parse error");
           }
         });
+
       } catch (e) {
         console.error(e);
         err.textContent = "❌ Failed to fetch from Google Sheet!";
         err.style.display = "block";
+        statusBox.innerHTML = "";
       }
     }
 
@@ -138,16 +160,18 @@
       const totalPages = Math.ceil(db.rows.length / rowsPerPage);
 
       let tableHTML = `
-        <table border="1" cellspacing="0" cellpadding="5" style="border-collapse:collapse; width:100%; text-align:left;">
-          <thead>
-            <tr>${db.headers.map(h => `<th>${h.name}</th>`).join("")}</tr>
-          </thead>
-          <tbody>
-            ${db.rows.slice(start, end).map(row => `
-              <tr>${row.map(cell => `<td>${cell}</td>`).join("")}</tr>
-            `).join("")}
-          </tbody>
-        </table>
+        <div style="overflow-x:auto; max-height:70vh; border:1px solid #ccc; border-radius:4px;">
+          <table>
+            <thead>
+              <tr>${db.headers.map(h => `<th>${h.name}</th>`).join("")}</tr>
+            </thead>
+            <tbody>
+              ${db.rows.slice(start, end).map(row => `
+                <tr>${row.map(cell => `<td>${cell || ""}</td>`).join("")}</tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
         <div style="margin-top:10px; text-align:center;">
           <button onclick="openDatabase('${dbName}', ${page - 1})" ${page === 1 ? "disabled" : ""}>⬅ Prev</button>
           <span> Page ${page} of ${totalPages} </span>
