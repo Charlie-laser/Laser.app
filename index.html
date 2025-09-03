@@ -38,9 +38,9 @@
     tbody tr:nth-child(even) { background: #fafafa; }
     tbody tr:hover { background: #f1f7ff; }
 
-    /* Progress bar */
-    .progress-container { width: 100%; background: #eee; border-radius: 4px; margin-top: 10px; }
-    .progress-bar { width: 0%; height: 20px; background: #2196f3; text-align: center; color: white; border-radius: 4px; transition: width 0.2s; }
+    /* Progress Bar */
+    #progressContainer { width: 100%; background: #eee; height: 20px; border-radius: 5px; margin-top: 10px; }
+    #progressBar { height: 20px; width: 0%; background: #2196F3; color: white; text-align: center; font-size: 12px; border-radius: 5px; }
   </style>
 </head>
 <body>
@@ -105,10 +105,11 @@
         <button onclick="importSheet()">Add</button>
         <div id="statusBox"></div>
         <div id="errorBox"></div>
-        <div class="progress-container"><div class="progress-bar" id="progressBar">0%</div></div>
+        <div id="progressContainer"><div id="progressBar">0%</div></div>
       `);
     }
 
+    // ✅ Fixed Import Function
     async function importSheet() {
       const url = document.getElementById("sheetURL").value.trim();
       const statusBox = document.getElementById("statusBox");
@@ -129,24 +130,32 @@
         const response = await fetch(url);
         if (!response.ok) throw new Error("Network error");
 
+        const csvText = await response.text();
         let allRows = [];
         let headers = [];
-        const csvText = await response.text();
-        const totalLines = csvText.split("\n").length;
+        const lines = csvText.split("\n").length; // মোট লাইন সংখ্যা
 
         Papa.parse(csvText, {
           header: true,
+          skipEmptyLines: true,
           worker: true,
           step: function(row) {
             if (headers.length === 0) headers = Object.keys(row.data);
             allRows.push(Object.values(row.data));
 
             // update progress
-            const percent = Math.min(100, Math.round((allRows.length / totalLines) * 100));
+            const percent = Math.min(100, Math.round((allRows.length / lines) * 100));
             progressBar.style.width = percent + "%";
             progressBar.textContent = percent + "%";
           },
           complete: function() {
+            if (allRows.length === 0) {
+              err.textContent = "❌ No data found in the sheet!";
+              err.style.display = "block";
+              statusBox.innerHTML = "";
+              return;
+            }
+
             let dbName = "Sheet_" + (Object.keys(databases).length + 1);
             databases[dbName] = {
               headers: headers.map(h => ({ name: h, type: "Text" })),
@@ -157,7 +166,9 @@
             openDatabases();
           },
           error: function() {
-            throw new Error("Parse error");
+            err.textContent = "❌ Failed to parse CSV!";
+            err.style.display = "block";
+            statusBox.innerHTML = "";
           }
         });
 
