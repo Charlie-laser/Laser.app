@@ -58,7 +58,7 @@
 
   <!-- Popup Menu -->
   <div id="popupMenu" class="menu-popup">
-    <div onclick="renameDatabase()">✏️ Rename</div>
+    <div onclick="renameDatabase()"✏️ Rename</div>
     <div onclick="deleteDatabase()">🗑 Delete</div>
   </div>
 
@@ -122,26 +122,19 @@
         const response = await fetch(url);
         if (!response.ok) throw new Error("Network error");
 
-        let allRows = [];
-        Papa.parse(await response.text(), {
+        const csvText = await response.text();
+
+        Papa.parse(csvText, {
           header: true,
-          worker: true,  
-          step: function(row) {
-            allRows.push(Object.values(row.data));
-
-            if (allRows.length % 1000 === 0) {
-              statusBox.innerHTML = `<p class='loading'>📥 Imported ${allRows.length} rows...</p>`;
-            }
-          },
+          worker: true, // faster parsing
           complete: function(results) {
-            const headers = Object.keys(results.meta.fields || results.data[0] || {});
+            if (!results.data || results.data.length === 0) throw new Error("Empty data");
+            const headers = Object.keys(results.data[0]);
             let dbName = "Sheet_" + (Object.keys(databases).length + 1);
-
             databases[dbName] = {
               headers: headers.map(h => ({ name: h, type: "Text" })),
-              rows: allRows
+              rows: results.data.map(row => headers.map(h => row[h]))
             };
-
             saveDatabases();
             statusBox.innerHTML = "<p class='success'>✅ Database added successfully!</p>";
             openDatabases();
@@ -186,6 +179,7 @@
         </div>
       `;
 
+      // saveHistory TRUE (default)
       setContent(`<h2>${dbName}</h2>${tableHTML}`);
     }
 
