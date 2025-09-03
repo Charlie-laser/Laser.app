@@ -22,8 +22,17 @@
     #errorBox { color: red; margin: 10px 0; display: none; }
     .loading { color: blue; font-style: italic; margin: 10px 0; }
     .success { color: green; margin: 10px 0; }
+
     table { border-collapse: collapse; width: 100%; font-size: 14px; }
-    thead th { position: sticky; top: 0; background: #f0f0f0; border: 1px solid #ccc; padding: 6px; text-align: left; z-index: 1; }
+    thead th { 
+      position: sticky; 
+      top: 0; 
+      background: #f0f0f0; 
+      border: 1px solid #ccc; 
+      padding: 6px; 
+      text-align: left;
+      z-index: 1;
+    }
     tbody td { border: 1px solid #ddd; padding: 6px; }
     tbody tr:nth-child(even) { background: #fafafa; }
     tbody tr:hover { background: #f1f7ff; }
@@ -86,11 +95,17 @@
 
     function showImportForm() {
       setContent(`
-        <h2>Add Database (CSV)</h2>
+        <h2>Add Database</h2>
+        <h3>📂 From CSV</h3>
         <input type="file" id="csvFile" accept=".csv">
         <button onclick="importCSV()">Upload</button>
         <div id="statusBox"></div>
         <div id="errorBox"></div>
+        
+        <h3>🌍 From Google Sheet</h3>
+        <input type="text" id="sheetUrl" placeholder="Paste Google Sheet link here" size="60">
+        <button onclick="importGoogleSheet()">Add</button>
+        <div id="sheetStatus"></div>
       `);
     }
 
@@ -135,6 +150,47 @@
           statusBox.innerHTML = "";
         }
       });
+    }
+
+    async function importGoogleSheet() {
+      const url = document.getElementById("sheetUrl").value;
+      const status = document.getElementById("sheetStatus");
+      status.textContent = "⌛ Loading from Google Sheet...";
+
+      try {
+        let csvUrl = url;
+        if (!url.includes("output=csv")) {
+          if (url.includes("/edit")) {
+            csvUrl = url.replace("/edit", "/gviz/tq?tqx=out:csv");
+          } else {
+            csvUrl += "&output=csv";
+          }
+        }
+
+        const response = await fetch(csvUrl);
+        if (!response.ok) throw new Error("Failed to fetch");
+        const csvText = await response.text();
+
+        Papa.parse(csvText, {
+          header: true,
+          complete: function(results) {
+            if (!results.data || results.data.length === 0) throw new Error("Empty sheet");
+            const headers = Object.keys(results.data[0]);
+            let dbName = "GoogleSheetDB_" + new Date().getTime();
+            databases[dbName] = {
+              headers: headers.map(h => ({ name: h, type: "Text" })),
+              rows: results.data.map(row => headers.map(h => row[h]))
+            };
+            saveDatabases();
+            status.innerHTML = "<p class='success'>✅ Upload Done!</p>";
+            openDatabases();
+          }
+        });
+
+      } catch (err) {
+        status.innerHTML = "<p style='color:red'>❌ Failed to fetch from Google Sheet!</p>";
+        console.error(err);
+      }
     }
 
     function openDatabase(dbName, page = 1) {
